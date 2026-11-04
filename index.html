@@ -1,70 +1,214 @@
 
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>منصتي - تشغيل الكاميرا</title>
-  <style>
-    body {
-      font-family: Arial;
-      background: #101827;
-      color: white;
-      text-align: center;
-      padding: 30px;
-    }
-    button {
-      padding: 14px 25px;
-      background: #1685ff;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-size: 18px;
-      margin: 10px;
-    }
-    video {
-      width: 100%;
-      max-width: 450px;
-      border-radius: 15px;
-      margin-top: 20px;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>منصة التواصل المباشر</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+body {
+  background:#101827;
+  color:white;
+  font-family:Arial;
+  text-align:center;
+  padding:20px;
+}
+.box {
+  background:#1c293b;
+  padding:22px;
+  border-radius:16px;
+  max-width:450px;
+  margin:20px auto;
+}
+button,input {
+  padding:13px;
+  margin:8px;
+  border:0;
+  border-radius:9px;
+  font-size:16px;
+}
+button {
+  background:#1685ff;
+  color:white;
+}
+input {width:85%;box-sizing:border-box}
+video {
+  width:100%;
+  border-radius:12px;
+  background:black;
+  margin-top:15px;
+}
+.hidden {display:none}
+.status {color:#8ec5ff}
+</style>
 </head>
 <body>
 
-  <h1>مرحباً بك في منصتي</h1>
-  <p>اضغط على الزر للسماح بتشغيل الكاميرا الأمامية.</p>
+<h2>منصة التواصل المباشر</h2>
+<p>اتصال فيديو مباشر بموافقة المشاركين</p>
 
-  <button onclick="startCamera()">تشغيل الكاميرا</button>
-  <button onclick="stopCamera()">إيقاف الكاميرا</button>
+<div class="box">
+  <h3>استقبال الفيديو (جهازك)</h3>
+  <button onclick="showReceiver()">فتح الاستقبال</button>
+  <div id="receiver" class="hidden">
+    <p>اكتب كود الجهاز الذي سيبث الفيديو إليك:</p>
+    <input id="hostCode" placeholder="كود الجهاز">
+    <button onclick="connectToHost()">اتصال</button>
+    <p id="receiveStatus" class="status"></p>
+    <video id="remoteVideo" autoplay playsinline controls></video>
+  </div>
+</div>
 
-  <video id="camera" autoplay playsinline></video>
+<div class="box">
+  <h3>إرسال الفيديو (الجهاز الآخر)</h3>
+  <button onclick="showSender()">فتح البث</button>
+  <div id="sender" class="hidden">
+    <p>سيتم بث الكاميرا والميكروفون مباشرة إلى الجهاز المتصل.</p>
+    <p>لن تظهر معاينة الكاميرا هنا.</p>
+    <button onclick="startBroadcast()">موافقة وبدء البث</button>
+    <h3 id="myCode">انتظر تجهيز الاتصال...</h3>
+    <button onclick="copyCode()">نسخ كود الاتصال</button>
+    <p id="sendStatus" class="status"></p>
+    <button onclick="stopBroadcast()">إيقاف البث</button>
+  </div>
+</div>
 
-  <script>
-    let stream = null;
+<script>
+let peer;
+let stream;
+let currentCall;
+let myPeerId = "";
 
-    async function startCamera() {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-          audio: false
-        });
+function showReceiver() {
+  document.getElementById("receiver").classList.remove("hidden");
+}
 
-        document.getElementById("camera").srcObject = stream;
-      } catch (error) {
-        alert("لم يتم السماح بتشغيل الكاميرا.");
+function showSender() {
+  document.getElementById("sender").classList.remove("hidden");
+
+  if (!peer) {
+    peer = new Peer();
+
+    peer.on("open", id => {
+      myPeerId = id;
+      document.getElementById("myCode").textContent =
+        "كود جهازك: " + id;
+    });
+
+    peer.on("call", call => {
+      if (!stream) {
+        call.close();
+        return;
       }
+
+      currentCall = call;
+      call.answer(stream);
+
+      document.getElementById("sendStatus").textContent =
+        "تم الاتصال وجاري البث المباشر.";
+    });
+
+    peer.on("error", () => {
+      document.getElementById("sendStatus").textContent =
+        "حدث خطأ في الاتصال.";
+    });
+  }
+}
+
+async function startBroadcast() {
+  try {
+    if (!peer || !myPeerId) {
+      alert("انتظر تجهيز الاتصال أولاً.");
+      return;
     }
 
-    function stopCamera() {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-        stream = null;
-        document.getElementById("camera").srcObject = null;
-      }
-    }
-  </script>
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: "user"},
+      audio: true
+    });
 
+    document.getElementById("sendStatus").textContent =
+      "الكاميرا والميكروفون يعملان والبث متاح للجهاز المتصل.";
+
+  } catch (error) {
+    alert("لم يتم تشغيل الكاميرا أو الميكروفون. تأكد من السماح بالأذونات.");
+  }
+}
+
+async function connectToHost() {
+  const hostId = document.getElementById("hostCode").value.trim();
+
+  if (!hostId) {
+    alert("اكتب كود الجهاز أولاً.");
+    return;
+  }
+
+  try {
+    if (!peer) {
+      peer = new Peer();
+    }
+
+    document.getElementById("receiveStatus").textContent =
+      "جاري الاتصال...";
+
+    if (!peer.open) {
+      await new Promise((resolve, reject) => {
+        peer.once("open", resolve);
+        peer.once("error", reject);
+      });
+    }
+
+    currentCall = peer.call(hostId, new MediaStream());
+
+    currentCall.on("stream", remoteStream => {
+      const video = document.getElementById("remoteVideo");
+      video.srcObject = remoteStream;
+      video.play();
+
+      document.getElementById("receiveStatus").textContent =
+        "تم الاتصال بنجاح.";
+    });
+
+    currentCall.on("close", () => {
+      document.getElementById("receiveStatus").textContent =
+        "انتهى الاتصال.";
+    });
+
+    currentCall.on("error", () => {
+      document.getElementById("receiveStatus").textContent =
+        "تعذر الاتصال.";
+    });
+
+  } catch (error) {
+    document.getElementById("receiveStatus").textContent =
+      "حدث خطأ أثناء الاتصال.";
+  }
+}
+
+function copyCode() {
+  if (myPeerId) {
+    navigator.clipboard.writeText(myPeerId);
+    alert("تم نسخ كود الاتصال.");
+  }
+}
+
+function stopBroadcast() {
+  if (currentCall) {
+    currentCall.close();
+    currentCall = null;
+  }
+
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+
+  document.getElementById("sendStatus").textContent =
+    "تم إيقاف الكاميرا والبث.";
+}
+
+</script>
 </body>
 </html>
-
